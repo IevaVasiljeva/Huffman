@@ -29,7 +29,10 @@ public class Control {
 		decodes.decode(1);
 		test();
 //		int[] result = encode.inputPrompt();
-//		System.out.println("Start length: " + result[0] + " amnd the compressed one: " + result[1]);
+//		int[] result = encode.encodeFile("lorem.txt", 2);
+//		int[] result = encode.encodeFile("true.png", 1);
+
+//		System.out.println("Start length: " + result[0] + " amnmd the compressed one: " + result[1]);
 	}
 
 }
