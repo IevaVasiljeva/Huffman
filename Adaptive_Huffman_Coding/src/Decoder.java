@@ -17,6 +17,8 @@ public class Decoder {
 
 	// When NYT is read, new symbol follows. Thus the next n (where n is the unit length in bytes) bytes have to be taken together as representing the new symbol
 	// Therefore we read n bytes, add them to the buffer, take the first n bytes from the buffer and return the rest
+	// the end of the input stream is signalled by encoding of the NYT symbol followed by a byte representation of a symbol that has already been seen
+	// therefore need to test for that
 	public String getNewSymbol(int unitLength, FileInputStream input, FileOutputStream output, String buffer) {
 		byte[] newlyRead = new byte[1];
 		try {
@@ -25,7 +27,6 @@ public class Decoder {
 				input.read(newlyRead);
 				buffer += String.format("%8s", Integer.toBinaryString(newlyRead[0] & 0xFF)).replace(' ', '0');
 			}
-			System.out.println("Buffer after reading more: " + buffer);
 			// First n bytes represent the newly read symbol
 			String byteRepOfSymbol = buffer.substring(0, 8*unitLength);
 			// The rest is the leftovers - return it as buffer
@@ -39,12 +40,12 @@ public class Decoder {
 			byte[] symbolInBytes = new byte[unitLength];
 			int index = 0;
 
-			
+			// Test whether the symbol just received has not already been seen (in that case it is the end of the stream)
 			String temp = byteRepOfSymbol;
 			while (temp.length()>0) {
 				// Take the first 8 elements (length of a byte)
 				String byteAsString = temp.substring(0, 8);
-				
+				// Parse them into a byte
 				final byte[] byteArray = new BigInteger(byteAsString, 2).toByteArray();
 				 byte toWrite = (byte)0;
 				for (byte b : byteArray) {
@@ -53,9 +54,10 @@ public class Decoder {
 				
 				byte byteToWrite = toWrite;
 				
-				// Store
+				// Store in a byte array to be able to check
 				symbolInBytes[index] = byteToWrite;
 
+				// Truncate the string
 				if (temp.length()>8) {
 					temp = temp.substring(8);
 				}
@@ -64,6 +66,7 @@ public class Decoder {
 				}
 			}
 			
+			// If the symbol has already been seen, the end of the file is reached. Return.
 			if (codeTree.getsymbolNodeMap().keySet().contains(symbolInBytes)) {
 				return "";
 			}
@@ -72,24 +75,18 @@ public class Decoder {
 			// Loop through the string, cutting bytes off it, writing them to the output and updating the code tree using them
 			while (byteRepOfSymbol.length()>0) {
 				// Take the first 8 elements (length of a byte)
-				System.out.println("Byte as string: " + byteRepOfSymbol);
 				String byteAsString = byteRepOfSymbol.substring(0, 8);
 				
-				
+				// Parse them into a byte
 				final byte[] byteArray = new BigInteger(byteAsString, 2).toByteArray();
 				 byte toWrite = (byte)0;
-				 System.out.println("To write: " + toWrite);
 				for (byte b : byteArray) {
 					toWrite=b;
-					System.out.println("To write2: " + toWrite);
 				}
 				
 				byte byteToWrite = toWrite;
 				
-				// Store
-				symbolInBytes[index] = byteToWrite;
-				// Write ot the output
-				System.out.println("Read: " + byteToWrite);
+				// Write the output
 				output.write(byteToWrite);
 				output.flush();
 				if (byteRepOfSymbol.length()>8) {
@@ -99,9 +96,9 @@ public class Decoder {
 					byteRepOfSymbol = "";
 				}
 			}
+			
 			// Update the code tree
 			codeTree.updateTree(symbolInBytes);
-			System.out.println("Leftover buffer: " + buffer);
 			return buffer;
 		}
 		catch (IOException e) {
@@ -112,11 +109,11 @@ public class Decoder {
 	}
 
 	// Reads the input source, decodes the information received and updates the code tree
-	public void decode(int unitLength) {
+	public void decode(int unitLength, String inputStreamName, String outputStreamName) {
 		try {
-			FileOutputStream outputStream = new FileOutputStream("decompressed.png");
+			FileOutputStream outputStream = new FileOutputStream(outputStreamName);
 
-			FileInputStream inputStream = new FileInputStream("compressed");
+			FileInputStream inputStream = new FileInputStream(inputStreamName);
 			// Read byte by byte
 			byte[] currentByte = new byte[1];
 			// 
@@ -130,13 +127,10 @@ public class Decoder {
 						break;
 					}
 					buffer = String.format("%8s", Integer.toBinaryString(currentByte[0] & 0xFF)).replace(' ', '0');
-					System.out.println("UpdatedBuffer: " + buffer);
 				}
 
-				//TODO find a better way of determining whether a node is a leaf node
 				// If the node reached is the leaf node, we have found a symbol and output its value to the output file
 				if (currentNode!=codeTree.getNYT() && (currentNode.getLeftChild()==null && currentNode.getRightChild()==null)) {
-					System.out.println("Read: " + (char)currentNode.getValue()[0]);
 					outputStream.write(currentNode.getValue());
 					// Update the tree with the symbol read
 					codeTree.updateTree(currentNode.getValue());
@@ -149,11 +143,11 @@ public class Decoder {
 					buffer = getNewSymbol(unitLength, inputStream, outputStream, buffer);
 					currentNode = codeTree.getRoot();
 				}
+				// In case the buffer is empty, will need to read more
 				char currentChar = '!';
 				if (buffer.length()!=0) {
 					currentChar = buffer.charAt(0);
 				}
-				System.out.println("Char: " + currentChar);
 
 				// If we have read 0, go left in the code tree
 				if (currentChar == '0') {
@@ -169,10 +163,8 @@ public class Decoder {
 			}
 
 		} 
-
 		catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			System.err.println("Could not read from the source file or write to the output.");
 		}
 
 	}

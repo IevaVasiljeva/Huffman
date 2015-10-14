@@ -3,10 +3,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.math.BigInteger;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 // A class for encoding input source symbols
 public class Encoder {
@@ -15,19 +16,19 @@ public class Encoder {
 	// To keep track of the size of the source and the resulting size
 	int resultingBitLength = 0;
 	int inputBitLength = 0;
-	// Create a file for the compressed result
-	File compressedFile = new File("compressed");
 	byte[] hasBeenTransmitted = null;
 	
 
 	// Method that enables the user to type in some text that he wants to compress.
 	// Returns the length of the input and the length of the result in bits
-	public int[] inputPrompt() {
+	public int[] inputPrompt(String outputFileName) {
 		// Input prompt
-		System.out.println("Please, enter a sentence to encode!");
+		System.out.println("Please, enter a sentence to encode:");
+		System.out.println();
 		BufferedReader inputReader = new BufferedReader(new InputStreamReader(System.in));
 				
 		try {
+			File compressedFile = new File(outputFileName);
 			FileOutputStream encodingWriter = new FileOutputStream(compressedFile);
 			try {
 				// Read input char by char
@@ -63,24 +64,19 @@ public class Encoder {
 					codeTree.updateTree(byteInput);
 				}
 			
-				// Append whatever is left over in the buffer padded by 0s
+				// Append whatever is left over followed by an NYT symbol and an already read symbol - signal about the ned of the file
 				if (buffer.length()>0) {
-					
+					// Send the encoding of NYT
 					buffer += getEncoding(codeTree, null);
-					
+					resultingBitLength += getEncoding(codeTree, null).length();
+					// Send a symbol that has already been seen
 					for (byte currentByte: hasBeenTransmitted) {
 						// Want to add the symbol in it's binary representation
 						buffer += String.format("%8s", Integer.toBinaryString(currentByte & 0xFF)).replace(' ', '0');
 					}
-										
-					// turn it into an ASCII char
-					final byte[] byteArray = new BigInteger(buffer, 2).toByteArray();
-					byte toWrite = (byte)0;
-					for (byte b : byteArray) {
-						toWrite=b;
-					}
-					// Append the results of the encoding to the output
-					encodingWriter.write(toWrite);
+					buffer += hasBeenTransmitted.length*8;
+					
+					emptyBuffer(encodingWriter);
 				}
 
 				// Flush and close
@@ -105,18 +101,14 @@ public class Encoder {
 		// If the buffer exceeds a byte, cut the first eight binary digits, find the corresponding char and store them in the file
 		// Do this till the buffer is smaller than a char
 		while (buffer.length() >= 8) {
-			// Take the first byte. It will be the first 7 characters padded by a 0, so thatthey could be parsed into a byte
+			// Take the first byte
 			String oneByte = buffer.substring(0, 8);	
-			
+			// Parse the binary string into a byte
 			final byte[] byteArray = new BigInteger(oneByte, 2).toByteArray();
 			byte toWrite = (byte)0;
 			for (byte b : byteArray) {
 				toWrite=b;
 			}
-			
-//			// turn it into an ASCII char
-//			char asciiChar = (char)Byte.parseByte(oneByte, 2);
-			
 			
 			// Append the results of the encoding to the output
 			encodingWriter.write(toWrite);
@@ -126,12 +118,13 @@ public class Encoder {
 	}
 	
 	// Encodes the given input file using Huffman encoding
-	public int[] encodeFile(String filename, int unitLength) {	
+	public int[] encodeFile(String filename, int unitLength, String outputFileName) {	
 				
 		try {
+
 			// Use an input file that has to be encoded
 			FileInputStream fileStream = new FileInputStream(filename);
-			File compressedFile = new File("compressed");
+			File compressedFile = new File(outputFileName);
 			try {
 				FileOutputStream encodingWriter = new FileOutputStream(compressedFile);
 				byte[] input = new byte[unitLength];
@@ -140,10 +133,7 @@ public class Encoder {
 				CodeTree codeTree = new CodeTree();
 
 				// Go through the input file byte by byte
-				while (fileStream.read(input) != -1) {
-					
-					System.out.println("Read: " + input[0]);
-					
+				while (fileStream.read(input) != -1) {					
 					// Keep track of the length of the input
 					inputBitLength += unitLength*8;
 					// Encode the symbol
@@ -163,30 +153,28 @@ public class Encoder {
 					input = new byte[unitLength];
 				}
 				
-				// Append whatever is left over in the buffer padded by 0s
+				// Append whatever is left over followed by an NYT symbol and an already read symbol - signal about the ned of the file
 				if (buffer.length()>0) {
-					
+					// Send the encoding of NYT
 					buffer += getEncoding(codeTree, null);
-					
+					buffer += getEncoding(codeTree, null).length();
+					// Send a symbol that has already been seen
 					for (byte currentByte: hasBeenTransmitted) {
 						// Want to add the symbol in it's binary representation
 						buffer += String.format("%8s", Integer.toBinaryString(currentByte & 0xFF)).replace(' ', '0');
 					}
+					buffer += hasBeenTransmitted.length*8;
+									
+					emptyBuffer(encodingWriter);
 
-					// turn it into an ASCII char
-					final byte[] byteArray = new BigInteger(buffer, 2).toByteArray();
-					byte toWrite = (byte)0;
-					for (byte b : byteArray) {
-						toWrite=b;
-					}
-					// Append the results of the encoding to the output
-					encodingWriter.write(toWrite);
 				}
 				
 				// Flush and close
 				encodingWriter.flush();
 				encodingWriter.close();
 				fileStream.close();
+				
+				// Return the compression data
 				int[] ioLengths = {inputBitLength, resultingBitLength};
 				return ioLengths;
 				
@@ -198,7 +186,6 @@ public class Encoder {
 		}
 		return null;
 	}
-
 	
 	// Returns the encoding of the symbol (or the NYT proceeded by the symbol itself, in case the symbol has not yet been seen)
 	public String getEncoding(CodeTree tree, byte[] symbol) {
@@ -215,10 +202,7 @@ public class Encoder {
 
 		// Get the node corresponding to the symbol read (or NYT if the symbol has not been read yet)
 		Node symbolNode = tree.getsymbolNodeMap().get(symbol);
-		if (symbol!=null) {
-			System.out.println("Symbol: " + symbol[0]);
-		}
-		System.out.println("Mapped to: " + symbolNode.getIndex());
+
 		// Now go through the tree starting from that node in the direction of the root, and register whether left (0) or right (1) branch has been taken
 		String reversedResult = "";
 		Node parent = symbolNode.getParent();
@@ -238,14 +222,12 @@ public class Encoder {
 		}
 		// Reverse the resulting string, as we started from the bottom, while the encoding should have been read starting from the top
 		String stringResult = new StringBuilder(reversedResult).reverse().toString();
-		System.out.println("String encoding: " + stringResult);
 
 		// Add the symbol itself if this is the first time it's seen
 		if (symbol == null) {
 			for (byte currentByte: originalSymbol) {
 				// Want to add the symbol in it's binary representation
 				stringResult += String.format("%8s", Integer.toBinaryString(currentByte & 0xFF)).replace(' ', '0');
-				System.out.println("New symbol: " + String.format("%8s", Integer.toBinaryString(currentByte & 0xFF)).replace(' ', '0'));
 			}
 			hasBeenTransmitted = originalSymbol;
 		}

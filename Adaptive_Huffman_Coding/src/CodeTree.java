@@ -96,7 +96,6 @@ public class CodeTree {
 		Node maxIndexNodeWithWeight = findHighestIndexNode(currentWeight);
 		// If that node is not the current node or its direct parent, a swap is needed
 		if (maxIndexNodeWithWeight != node && maxIndexNodeWithWeight != node.getParent()) {
-			System.out.println("Swapping " + node.getIndex() + " and " + maxIndexNodeWithWeight.getIndex());
 			swapBranches(node, maxIndexNodeWithWeight);
 		}
 		//Update the mapping of weights - nodes, associating this node with the increased weight
@@ -111,7 +110,7 @@ public class CodeTree {
 		}
 		// Increase weight for this node
 		node.setWeight(node.getWeight()+1);
-		// Recursively increase weight of for the parent nodes until th eroot is reached
+		// Recursively increase weight of for the parent nodes until the root is reached
 		if (node.getParent() != null) {
 			increaseWeight(node.getParent());
 		}
