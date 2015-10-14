@@ -2,33 +2,36 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Random;
 
+// A class representing Huffman Coding code tree and providing operations for it
 public class CodeTree {
 
+	// The top node
 	private Node root;
+	// A mapping between node indexes and node weights to simplify checking
+	// whether there exists a node with the same weight but higher index
 	private HashMap<Integer, ArrayList<Node>> indexWeightMap;
+	// Node that stands for all the symbols that have not yet been transmitted
 	private Node notYetTransmitted;
-	private HashMap<Character, Node> symbolNodeMap;
+	// Hasmap for easier retrieval of the leaf nodes (that correspond to symbols expressed in bytes), so that 
+	// it is possible to get the encoding of a symbol without traversing the entire tree to find it
+	private SymbolNodeMap symbolNodeMap;
 
-	// Constructor creates the root node ("not yet transmitted"), and the hashmap
+	// Constructor creates the root node ("not yet transmitted"), and initialises hashmaps
 	public CodeTree() {
 		notYetTransmitted = new Node(0, 0, null);
 		root = notYetTransmitted;
-		Random rn  = new Random();
-		int i = rn.nextInt(100);
-		if (i < 20){
-			throw new RuntimeException("MEOW");
-		}
 		indexWeightMap = new HashMap<>();		
-		symbolNodeMap = new HashMap<>();
+		symbolNodeMap = new SymbolNodeMap();
+		// Map NYT to null
 		symbolNodeMap.put(null, notYetTransmitted);
 	}
 
-	// Increases index values of all the nodes in the tree except the NYT node (it's index will always stay 0)
+	// Increases index values of all the nodes in the tree (if root is passed as the argument) except for the NYT node (it's index will always stay 0)
 	// called when a new symbol is read and two new nodes are added to the bottom level of the tree
 	public void increaseIndex(Node node) {
 		if (node != notYetTransmitted) {
-			node.setIndex(node.getIndex()+1);
-			//Recursively increases indexes of all the children
+			node.setIndex(node.getIndex()+2);
+			//Recursively increases indexes of all the subnodes
 			if (node.getLeftChild() != null) {
 				increaseIndex(node.getLeftChild());
 			}
@@ -38,26 +41,32 @@ public class CodeTree {
 		}
 	}
 
-	// Adds the necessary nodes for a symbol that has never been seen before
-	public void addSymbol(Character symbol) {
+	// Changes the code tree to incorporate a symbol that has not been read before - 
+	// substitutes the NYT node by a new inner node with two children - NYT and a new leaf node corresponding ot the symbol
+	public void addSymbol(byte[] symbol) {
 		//Increase indexes of all the other nodes (except for NYT)
 		increaseIndex(root);
 
 		// Create an internal node that will be the parent of the new symbol node and NYT node
 		Node newInternalNode = new Node(2, 1, notYetTransmitted.getParent());
+		// If this is the first symbol read, NYT won't have a parent
 		if (notYetTransmitted.getParent() != null) {
 			notYetTransmitted.getParent().setLeftChild(newInternalNode);
 		}
+		// Set the new node as NYTs parent
 		notYetTransmitted.setParent(newInternalNode);
 		newInternalNode.setLeftChild(notYetTransmitted);
 		if (root == notYetTransmitted) {
 			root = newInternalNode;
 		}
 
-		// Create a node for the new symbol
+		// Create a new leaf node corresponding to the symbol
 		Node newSymbolNode = new Node(1, 1, newInternalNode);
-		newSymbolNode.setValue((char)symbol);
+		// Link the node to the symbol
+		newSymbolNode.setValue(symbol);
+		// Add to the symbol-node hashmap
 		symbolNodeMap.put(symbol, newSymbolNode);
+		// NYT is one the left, new leaf node on the right; maintain consecutive indices
 		newInternalNode.setRightChild(newSymbolNode);
 
 		// Add the new nodes to the hashmap of weights - nodes
@@ -87,6 +96,7 @@ public class CodeTree {
 		Node maxIndexNodeWithWeight = findHighestIndexNode(currentWeight);
 		// If that node is not the current node or its direct parent, a swap is needed
 		if (maxIndexNodeWithWeight != node && maxIndexNodeWithWeight != node.getParent()) {
+			System.out.println("Swapping " + node.getIndex() + " and " + maxIndexNodeWithWeight.getIndex());
 			swapBranches(node, maxIndexNodeWithWeight);
 		}
 		//Update the mapping of weights - nodes, associating this node with the increased weight
@@ -99,9 +109,9 @@ public class CodeTree {
 			newNodeList.add(node);
 			indexWeightMap.put(currentWeight+1, newNodeList);
 		}
-		// Increase weight
+		// Increase weight for this node
 		node.setWeight(node.getWeight()+1);
-		// Recursively increase weight of for the parent nodes
+		// Recursively increase weight of for the parent nodes until th eroot is reached
 		if (node.getParent() != null) {
 			increaseWeight(node.getParent());
 		}
@@ -117,17 +127,18 @@ public class CodeTree {
 		}
 	}
 
-	//TODO throw exception for trying to swap parent
-	//Swaps two nodes so that the weights and children of each node remain the same, while positions in the tree and indexes change
+	// Swaps two nodes so that the weights and children of each node remain the same, while positions in the tree and indexes change
 	public void swapBranches(Node firstBranch, Node secondBranch) {
-		//Swap indexes of the nodes (all the other properties of the nodes stay the same)
+		// Swap indexes of the nodes (all the other properties of the nodes stay the same)
 		int temp = secondBranch.getIndex();
 		secondBranch.setIndex(firstBranch.getIndex());
 		firstBranch.setIndex(temp);
 
 		//Swap the parents - places each node in the correct spot in the tree
 		Node tempParent = secondBranch.getParent();
+		boolean isLeft = (tempParent.getLeftChild() == secondBranch);
 		secondBranch.setParent(firstBranch.getParent());
+		// Need to maintain the correct structure (left vs right)
 		if (firstBranch.getParent().getLeftChild() == firstBranch) {
 			firstBranch.getParent().setLeftChild(secondBranch);
 		}
@@ -135,7 +146,7 @@ public class CodeTree {
 			firstBranch.getParent().setRightChild(secondBranch);
 		}
 		firstBranch.setParent(tempParent);
-		if (tempParent.getLeftChild() == secondBranch) {
+		if (isLeft) {
 			tempParent.setLeftChild(firstBranch);
 		}
 		else {
@@ -144,10 +155,12 @@ public class CodeTree {
 	}
 
 
-	//Adaptive Huffman algorithm requires moving a node before incrementing its weight in case a node with a higher index and the same weight is returned
-	//This method returns a node of the given weight that has the highest index assigned to it
+	// Adaptive Huffman algorithm requires moving a node before incrementing its weight in case a node with a higher index and the same weight is found
+	// This method returns a node of the given weight that has the highest index assigned to it
 	public Node findHighestIndexNode(Integer weight) {
+		// First check if there are any nodes with the given weight
 		if (indexWeightMap.containsKey(weight)) {
+			// If there are, loop through all and find the one with the highest index
 			int highestIndex = 0;
 			Node highestIndexNode = null;
 			for (Node temp : indexWeightMap.get(weight)) {
@@ -160,25 +173,28 @@ public class CodeTree {
 		}
 		return null;
 	}
-	
-	public void updateTree(Character symbol) {
+
+	// Updates the tree given a symbol that has just been read
+	public void updateTree(byte[] symbol) {
+		// If such symbol has been read already, increase the weight of the corresponding node and its parents (and possibly restructure the tree)
 		if (symbolNodeMap.containsKey(symbol)) {
 			Node symbolNode = symbolNodeMap.get(symbol);
 			increaseWeight(symbolNode);
 		}
+		// Otherwise update the tree to add this new symbol
 		else {
 			addSymbol(symbol);
 		}
 	}
-	
-	public HashMap<Character, Node> getsymbolNodeMap() {
+
+	public HashMap<byte[], Node> getsymbolNodeMap() {
 		return symbolNodeMap;
 	}
-	
+
 	public Node getRoot() {
 		return root;
 	}
-	
+
 	public Node getNYT() {
 		return notYetTransmitted;
 	}
